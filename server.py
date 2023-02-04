@@ -6,12 +6,12 @@ import sys
 
 HOST = "localhost"
 PACKET_SIZE = 1024 # Number of bytes to read from client requests
-PORT = 8080 # Port server socket will be bound to, 80 is default port for http
+PORT = 8087 # Port server socket will be bound to, 80 is default port for http
 VERSION_11 = '1.1'
 VERSION_10 = '1.0'
-DIRNAME = 'wget'
-HTMLpage = 'HTML'
-imageType = ("jpg" , "jpeg" , "png")
+DIRNAME = 'www.scu.edu'
+HTMLpage = 'html'
+imageType = ("jpg" , "jpeg" , "png", "css", "js", "json")
 def serverShutdown(serverSock):
    print(f"\nServer shutting down ...")
    serverSock.close()
@@ -99,7 +99,7 @@ def parseImages(httpVersion, fileType, requestType, filepath):
        responseCode = 404    
     return (responseHeader, responseCode, responseData)
        
-def clientHandling(clientSock, clientAddr):
+def clientHandling(clientSock):
     persistent = False
     while True:        
       try:        
@@ -162,6 +162,7 @@ def clientHandling(clientSock, clientAddr):
          print(f"\nClosing client socket...")
          clientSock.close()
          break
+    
     print(f"\nClient handeled, Closing client socket...")
     clientSock.close()
 
@@ -190,14 +191,15 @@ while True:
         print(f"\nServer is listening for connection...\n")         
         clientSock, clientAddr = serverSock.accept() # Establish the connection from client 
         print(f"\nconnection established from client {clientAddr}" )
+        # clientHandling(clientSock)
         # Create new thread for client request, and continue accepting connections
-        t = threading.Thread(target= clientHandling, args=(clientSock, clientAddr))
-        t.setDaemon(True)
+        t = threading.Thread(target= clientHandling, args=(clientSock,))
+        # t.setDaemon(True)
         t.start()
         # send a thank you message to the client. encoding to send byte type.
-        clientSock.send('Thank you for connecting'.encode())    
-        # Close the connection with the client
-        clientSock.close()
+        # clientSock.send('Thank you for connecting'.encode())    
+        # # Close the connection with the client
+        # clientSock.close()
     except Exception:
         print(f"\nException in forever loop. Closing client socket...")
         clientSock.close()
