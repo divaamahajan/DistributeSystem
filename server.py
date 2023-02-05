@@ -23,7 +23,6 @@ def serverShutdown(serverSock):
     sys.exit(1)
 
 def getPortNo():
-    portNo = int()
     parser = argparse.ArgumentParser()  # Initialize parser
     parser.add_argument("-port", "--portNo", help = "choose a portNo") # Adding optional argument
     args = parser.parse_args() # Read arguments from command line
