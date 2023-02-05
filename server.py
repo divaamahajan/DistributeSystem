@@ -3,32 +3,46 @@ import time
 import threading
 import signal
 import sys
+import argparse
+
 
 HOST = "localhost"
 PACKET_SIZE = 1024 # Number of bytes to read from client requests
-PORT = 8087 # Port server socket will be bound to, 80 is default port for http
+# PORTNO = 8081 # Port server socket will be bound to, 80 is default port for http
 VERSION_11 = '1.1'
 VERSION_10 = '1.0'
 DIRNAME = 'www.scu.edu'
+OKPAGE = 'index.html'
 HTMLpage = 'html'
 imageType = ("jpg" , "jpeg" , "png", "css", "js", "json")
+
+
 def serverShutdown(serverSock):
-   print(f"\nServer shutting down ...")
-   serverSock.close()
-   sys.exit(1)
+    print(f"\nServer shutting down ...")
+    serverSock.close()
+    sys.exit(1)
+
+def getPortNo():
+    portNo = int()
+    parser = argparse.ArgumentParser()  # Initialize parser
+    parser.add_argument("-port", "--portNo", help = "choose a portNo") # Adding optional argument
+    args = parser.parse_args() # Read arguments from command line
+    if not args.portNo: return 8081
+    else: return args.portNo
 
 def getRequest(clientSock):
+    clientRequest, requestType, httpVersion = '','',''
     # Recive request (packet) from client and decode
     clientRequest = clientSock.recv(PACKET_SIZE).decode()  
     # If no request recieved from client close connection and break
     if not clientRequest:  
        print(f"\nNo request recieved.")
        raise Exception
-
     # Get request type and version from client request
     try:
        requestType = clientRequest.split(' ')[0]     
-       httpVersion = clientRequest.split('/')[2][:3]
+    #    httpVersion = clientRequest.split('/')[2][:3]
+       httpVersion = clientRequest.split('HTTP/')[1][:3]
        print(f"\nRequest: {clientRequest}")
        print(f"\n\tMethod: {requestType} || HTTP Version: {httpVersion}")
     except Exception as e:
@@ -37,15 +51,17 @@ def getRequest(clientSock):
     return (clientRequest, requestType, httpVersion)
     
 def getFileDetails(clientRequest):
+    fileType,filepath = '',''
     try:               
        fileRequested = clientRequest.split(' ')[1]   # GET /index.html (split on space)
-       if fileRequested == "/": fileRequested = "/index.html" # / means request for the base html page           
+       if fileRequested == "/": fileRequested = "/index.html" # / means request for the base html page 
+       elif fileRequested[-1] == '/': fileRequested += 'index.html'      
        fileType = fileRequested.split('.')[1]  # Get filetype of request
        print(f"\nFile requested by client: " + fileRequested)
        print(f"\nFiletype of file: " + fileType)
     except Exception as e:
        print(f"\nError getting filetype/requested file")
-       raise Exception
+    #    raise Exception
 
     filepath = DIRNAME + fileRequested  # Base page is in wget folder
     print(f"\nFilepath to serve: " + filepath + '\n')
@@ -53,39 +69,47 @@ def getFileDetails(clientRequest):
 
 # Generates http response headers based on http protocol version and response code
 def createHeader(responseCode, httpVersion, fileType):
-   header = ''
-   time_now = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
-   header += f'HTTP/{httpVersion} {responseCode}'
-   if responseCode == 200: header += ' OK\n'
-   elif responseCode == 404: header += ' Not Found\n'
+    header = ''
+    try:        
+        time_now = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+        header += f'HTTP/{httpVersion} {responseCode}'
+        if responseCode == 200: header += ' OK\n'
+        elif responseCode == 404: header += ' Not Found\n'
+        elif responseCode == 403: header += 'Forbidden\n'
 
-   header += 'Date: ' + time_now + '\n'
-   header += "Server: Divya Mahajan's Python Server\n"
+        header += 'Date: ' + time_now + '\n'
+        header += "Server: Divya Mahajan's Python Server\n"
 
-   if httpVersion == VERSION_10: header += 'Connection: close\n'  
-   elif httpVersion == VERSION_11: header += 'Connection: keep-alive\n'  
+        if httpVersion == VERSION_10: header += 'Connection: close\n'  
+        elif httpVersion == VERSION_11: header += 'Connection: keep-alive\n'  
 
-   if fileType == 'html': header += 'Content-Type: text/html\n\n'
-   elif fileType in imageType: header += f'Content-Type: image/{fileType}\n\n'
-   else:header += 'Content-Type: ' + fileType + '\n\n'
-   return header
+        if fileType == 'html': header += 'Content-Type: text/html\n\n'
+        elif fileType in imageType: header += f'Content-Type: image/{fileType}\n\n'
+        else:header += 'Content-Type: ' + fileType + '\n\n'
+    except Exception:
+        print("header could not be created for responseCode {responseCode}, httpVersion {httpVersion}, fileType {fileType}")
+    return header
 
 def parseHTMLpage(httpVersion, fileType, requestType, filepath):
-   try:
-      if requestType == "GET":  # Only want to read if was GET request
-         file = open(filepath, 'r')
-         responseData = file.read()
-         file.close()
-      responseHeader = createHeader(200, httpVersion, fileType)  # Make 200 OK response
-      responseCode = 200
-   except Exception as e:  # If exception is thrown by attempting to open file that doesnt exist
-      print(f"\nFile not found, serving 404 file not found response")
-      responseHeader = createHeader(404, httpVersion, fileType)  # Make 404 file not found response
-      responseCode = 404
-   return (responseHeader, responseCode, responseData)
+    responseCode, responseData = int(),''
+    try:
+        if requestType == "GET":  # Only want to read if was GET request
+            file = open(filepath, 'r')
+            print("file opened")                     
+            if filepath == DIRNAME + '/'+ OKPAGE : 
+                responseData = file.read()
+                responseCode = 200 # Make 200 OK response
+            else: responseCode = 403 # Make 403 permission denied response
+            file.close()
+        
+    except Exception:  # If exception is thrown by attempting to open file that doesnt exist
+        print(f"\nFile not found, serving 404 file not found response")      # Make 404 file not found response
+        responseCode = 404
+    return (createHeader(responseCode, httpVersion, fileType), responseCode, responseData)
 
 
 def parseImages(httpVersion, fileType, requestType, filepath):
+    responseHeader, responseCode, responseData = '', int(),''
     try:
        if requestType == "GET":  # Only want to read if was GET request
           file = open(filepath, 'rb')  # Open image in bytes format
@@ -93,7 +117,7 @@ def parseImages(httpVersion, fileType, requestType, filepath):
           file.close()
        responseHeader = createHeader(200, httpVersion, fileType)  # Make 200 OK response
        responseCode = 200
-    except Exception as e:  # If exception is thrown by attempting to open file that doesnt exist
+    except Exception:  # If exception is thrown by attempting to open file that doesnt exist
        print(f"\nImage not found/couldn't be opened, serving 404 file not found response")
        responseHeader = createHeader(404, httpVersion, fileType)  # Make 404 file not found response
        responseCode = 404    
@@ -170,6 +194,9 @@ def clientHandling(clientSock):
 # if __name__ == "__main__":
 # Interrupt from keyboard (CTRL + C).Default action is to raise KeyboardInterrupt.
 signal.signal(signal.SIGINT, serverShutdown)
+portNo = getPortNo()
+print(f"go to link: http://localhost:{portNo}")
+
 #create a TCP socket | AF_INET : ipv4 | SOCK_STREAM : TCP protocol. 
 serverSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 # to rerun Python socket server on the same specific port after closing it once. 
@@ -177,10 +204,10 @@ serverSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 print(f"\nSocket successfully created")
 # bind localhost IP to the port
 try:
-    serverSock.bind((HOST, PORT))
-    print(f"Socket bound successfully to host {HOST} and port {PORT}")
+    serverSock.bind((HOST, portNo))
+    print(f"Socket bound successfully to host {HOST} and port {portNo}")
 except Exception as e:  # Exit if socket could not be bound to port
-    print(f"Error: socket bound failure to port: {PORT}")
+    print(f"Error: socket bound failure to port: {portNo}")
     serverSock.close()
     sys.exit(1)
 
@@ -191,15 +218,10 @@ while True:
         print(f"\nServer is listening for connection...\n")         
         clientSock, clientAddr = serverSock.accept() # Establish the connection from client 
         print(f"\nconnection established from client {clientAddr}" )
-        # clientHandling(clientSock)
+        # clientHandling(clientSock) #Single thread
         # Create new thread for client request, and continue accepting connections
         t = threading.Thread(target= clientHandling, args=(clientSock,))
-        # t.setDaemon(True)
         t.start()
-        # send a thank you message to the client. encoding to send byte type.
-        # clientSock.send('Thank you for connecting'.encode())    
-        # # Close the connection with the client
-        # clientSock.close()
     except Exception:
         print(f"\nException in forever loop. Closing client socket...")
         clientSock.close()
