@@ -17,17 +17,22 @@ HTMLpage = 'html'
 imageType = ("jpg" , "jpeg" , "png", "css", "js", "json")
 
 
-def serverShutdown(serverSock):
+def serverShutdown(sig, frame):
     print(f"\nServer shutting down ...")
     serverSock.close()
     sys.exit(1)
 
-def getPortNo():
+def getArguments():
+    portNo, dirName = int(), ''
     parser = argparse.ArgumentParser()  # Initialize parser
     parser.add_argument("-port", "--portNo", help = "choose a portNo") # Adding optional argument
+    parser.add_argument("-document_root", "--dirName", help = "Enter the directory name of the file") # Adding optional argument
     args = parser.parse_args() # Read arguments from command line
-    if not args.portNo: return 8081
-    else: return args.portNo
+    if not args.portNo: portNo =  8081
+    else: portNo = int(args.portNo)
+    if not args.dirName: dirName = 'www.scu.edu'
+    else: dirName = str(args.dirName)
+    return (portNo, dirName)
 
 def getRequest(clientSock):
     clientRequest, requestType, httpVersion = '','',''
@@ -40,7 +45,6 @@ def getRequest(clientSock):
     # Get request type and version from client request
     try:
        requestType = clientRequest.split(' ')[0]     
-    #    httpVersion = clientRequest.split('/')[2][:3]
        httpVersion = clientRequest.split('HTTP/')[1][:3]
        print(f"\nRequest: {clientRequest}")
        print(f"\n\tMethod: {requestType} || HTTP Version: {httpVersion}")
@@ -49,25 +53,23 @@ def getRequest(clientSock):
        raise Exception
     return (clientRequest, requestType, httpVersion)
     
-def getFileDetails(clientRequest):
+def getFileDetails(dirName, clientRequest):
     fileType,filepath = '',''
     try:               
        fileRequested = clientRequest.split(' ')[1]   # GET /index.html (split on space)
-       if fileRequested == "/": fileRequested = "/index.html" # / means request for the base html page 
-       elif fileRequested[-1] == '/': fileRequested += 'index.html'      
+       if fileRequested[-1] == '/': fileRequested += 'index.html'      
        fileType = fileRequested.split('.')[1]  # Get filetype of request
        print(f"\nFile requested by client: " + fileRequested)
        print(f"\nFiletype of file: " + fileType)
     except Exception as e:
        print(f"\nError getting filetype/requested file")
-    #    raise Exception
 
-    filepath = DIRNAME + fileRequested  # Base page is in wget folder
+    filepath = dirName + fileRequested  # Base page is in wget folder
     print(f"\nFilepath to serve: " + filepath + '\n')
     return(fileType,filepath)
 
 # Generates http response headers based on http protocol version and response code
-def createHeader(responseCode, httpVersion, fileType):
+def createHeader(responseCode, httpVersion, fileType, size):
     header = ''
     try:        
         time_now = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
@@ -75,54 +77,54 @@ def createHeader(responseCode, httpVersion, fileType):
         if responseCode == 200: header += ' OK\n'
         elif responseCode == 404: header += ' Not Found\n'
         elif responseCode == 403: header += 'Forbidden\n'
+        elif responseCode == 400: header += 'Bad Request\n'
 
         header += 'Date: ' + time_now + '\n'
         header += "Server: Divya Mahajan's Python Server\n"
 
         if httpVersion == VERSION_10: header += 'Connection: close\n'  
         elif httpVersion == VERSION_11: header += 'Connection: keep-alive\n'  
+        header += 'Content-size: '+ str(size) + ' chars\n'
 
         if fileType == 'html': header += 'Content-Type: text/html\n\n'
         elif fileType in imageType: header += f'Content-Type: image/{fileType}\n\n'
-        else:header += 'Content-Type: ' + fileType + '\n\n'
+        else:header += f'Content-Type: {fileType}\n'
     except Exception:
         print("header could not be created for responseCode {responseCode}, httpVersion {httpVersion}, fileType {fileType}")
     return header
 
-def parseHTMLpage(httpVersion, fileType, requestType, filepath):
+def parseHTMLpage(dirName, httpVersion, fileType, requestType, filepath):
     responseCode, responseData = int(),''
     try:
         if requestType == "GET":  # Only want to read if was GET request
-            file = open(filepath, 'r')
-            print("file opened")                     
-            if filepath == DIRNAME + '/'+ OKPAGE : 
+            file = open(filepath, 'r')        
+            if filepath == dirName + '/'+ OKPAGE : 
                 responseData = file.read()
                 responseCode = 200 # Make 200 OK response
             else: responseCode = 403 # Make 403 permission denied response
             file.close()
-        
+        else: responseCode = 400      # Make 400 Bad Request response   
     except Exception:  # If exception is thrown by attempting to open file that doesnt exist
         print(f"\nFile not found, serving 404 file not found response")      # Make 404 file not found response
         responseCode = 404
-    return (createHeader(responseCode, httpVersion, fileType), responseCode, responseData)
+    return (createHeader(responseCode, httpVersion, fileType,len(responseData)), responseCode, responseData)
 
 
 def parseImages(httpVersion, fileType, requestType, filepath):
-    responseHeader, responseCode, responseData = '', int(),''
+    responseCode, responseData = int(),''
     try:
-       if requestType == "GET":  # Only want to read if was GET request
-          file = open(filepath, 'rb')  # Open image in bytes format
-          responseData = file.read()
-          file.close()
-       responseHeader = createHeader(200, httpVersion, fileType)  # Make 200 OK response
-       responseCode = 200
+        if requestType == "GET":  # Only want to read if was GET request
+            file = open(filepath, 'rb')  # Open image in bytes format
+            responseData = file.read()
+            file.close()
+            responseCode = 200  # Make 200 OK response
+        else: responseCode = 400  # Make 400 Bad Request response        
     except Exception:  # If exception is thrown by attempting to open file that doesnt exist
        print(f"\nImage not found/couldn't be opened, serving 404 file not found response")
-       responseHeader = createHeader(404, httpVersion, fileType)  # Make 404 file not found response
-       responseCode = 404    
-    return (responseHeader, responseCode, responseData)
+       responseCode = 404    # Make 404 file not found response
+    return (createHeader(responseCode, httpVersion, fileType,len(responseData)), responseCode, responseData)
        
-def clientHandling(clientSock):
+def clientHandling(dirName, clientSock):
     persistent = False
     while True:        
       try:        
@@ -135,19 +137,19 @@ def clientHandling(clientSock):
 
          # valid requests
          if requestType == "GET" or requestType == "HEAD":
-            fileType,filepath = getFileDetails(clientRequest)
+            fileType,filepath = getFileDetails(dirName,clientRequest)
 
             # Attempt to load and serve file content
             # If just serving a html file
             if fileType == HTMLpage:
-                responseHeader, responseCode, responseData = parseHTMLpage(httpVersion, fileType, requestType, filepath)
+                responseHeader, responseCode, responseData = parseHTMLpage(dirName,httpVersion, fileType, requestType, filepath)
             # Else if trying to serve up an image
             elif fileType in imageType:
                responseHeader, responseCode, responseData = parseImages(httpVersion, fileType, requestType, filepath)
             # Else trying to request/open an invalid file type
             else:
-               print(f"\nInvalid requested filetype: " + fileType)
-               responseHeader = createHeader(404, httpVersion, fileType)
+               print(f"\nInvalid requested filetype (Bad Request): " + fileType)
+               responseHeader = createHeader(400, httpVersion, fileType,0)
             
             # If request was GET and requested file was read successfully, append the file to the response header
             if (fileType == HTMLpage or fileType in imageType) and requestType == "GET" and responseCode == 200:
@@ -169,7 +171,7 @@ def clientHandling(clientSock):
             raise Exception
       except FileNotFoundError:
             print(f"File Not Found : {fileType}")
-            responseHeader = createHeader(404, httpVersion, fileType)
+            responseHeader = createHeader(404, httpVersion, fileType,0)
             print(f"Sending: \n \t {responseHeader}")
             clientSock.send(responseHeader.encode())
             print(f"\nClosing client socket...")
@@ -191,10 +193,14 @@ def clientHandling(clientSock):
 
 
 # if __name__ == "__main__":
-# Interrupt from keyboard (CTRL + C).Default action is to raise KeyboardInterrupt.
-signal.signal(signal.SIGINT, serverShutdown)
-portNo = getPortNo()
-print(f"go to link: http://localhost:{portNo}")
+
+signal.signal(signal.SIGINT, serverShutdown) #Keyboard Interrupt will shutdown Server
+portNo , dirName = getArguments()
+# portNo = getPortNo()
+# dirName = getDirName()
+print(f"The server is exposed to Port {portNo}")
+print(f"The server will fetch web pages from local directory {dirName}")
+print(f"\tTo connect with client on browser,\n\tClick on link: http://localhost:{portNo}")
 
 #create a TCP socket | AF_INET : ipv4 | SOCK_STREAM : TCP protocol. 
 serverSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -219,7 +225,7 @@ while True:
         print(f"\nconnection established from client {clientAddr}" )
         # clientHandling(clientSock) #Single thread
         # Create new thread for client request, and continue accepting connections
-        t = threading.Thread(target= clientHandling, args=(clientSock,))
+        t = threading.Thread(target= clientHandling, args=(dirName, clientSock,))
         t.start()
     except Exception:
         print(f"\nException in forever loop. Closing client socket...")
