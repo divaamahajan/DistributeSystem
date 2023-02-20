@@ -19,7 +19,7 @@ def main():
     m.connect()
     count = 0
     print(m.welcome_message)
-    pub_id = random.randint(0, 1000)
+    pub_id = random.randint(0, 1000) #received from server: userID
     print(f'Publisher ID: {pub_id}.')
 
     def publish(channel, msg):

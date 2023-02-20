@@ -1,59 +1,167 @@
-from collections import deque
-import sys
+
+import collections
+import signal
 import socket
+import sys
+import time
+import traceback
+import uuid
+from multiprocessing import Process
+from socketserver import BaseRequestHandler, ThreadingMixIn, TCPServer
 
-class Message:
-    q = deque()
-    def check_queue_data(self):
-        if(len(self.q) > 0):
-            return True
-        else:
-            return False
-    def add_message(self, message):
-        self.q.append(message)
-    
-    def get_message(self):
-        return self.q.popleft()
+from pubsub.common import ConnectionClosed, get_message, send_message
 
-def start_server():
-    HOST = '127.0.0.1'
-    PORT = 8801
-    try:
-        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-        # listener.setblocking(False)
-    except:
-        print(f"\nError while creating socket.\nShutting down.....")
-        sys.exit()
-    
-    try:
-        listener.bind((HOST,PORT))
-    except:
-        print(f"\nError while binding socket.\nShutting down ....")
-        sys.exit()
-    print(f"\nBroker Ready, listening on {HOST}:{PORT} ....\nDefault Queue size is 10\n")
-    
-    Broker = Message()
-    
-    while True:
-        listener.listen()
-        clientSock, clientAddr = listener.accept()
-        pub_and_sub(clientSock, Broker)
-        clientSock.close()
-        
-def pub_and_sub(client, msg_Broker):
-    request = client.recv(1024).decode()
-    message = request.split("\n")
-    if(message[0] == 'Publisher'):
-        msg_Broker.add_message(message[1])
-    else:
-        pass_message = "Sorry no message available in the queue"
-        if(msg_Broker.check_queue_data()):
-            pass_message = msg_Broker.get_message()
-            print(f"\nMessage passed to subscriber:\n{pass_message}")
-        else:
-            print(f"\nSorry no message available in the queue\n")
-        client.sendall(pass_message.encode(encoding='utf-8'))
-    
-if __name__ == "__main__":
-    start_server()
+ADDRESS = '127.0.0.1'
+PORT = 6747  # spells MSGQ (message queue)
+
+
+class ThreadedTCPServer(ThreadingMixIn, TCPServer):
+    EXITING = False
+    PROCESS = None #multiprocessing object process
+    HISTORY = dict()
+
+
+ThreadedTCPServer.allow_reuse_address = True
+
+
+class TCPRequestHandler(BaseRequestHandler):
+    connections = dict()
+
+    def handle(self):
+        conn_id = str(uuid.uuid4())
+        TCPRequestHandler.connections[conn_id] = dict(handler=self, subscriptions=[conn_id], options=dict())
+        self.respond(conn_id, 'Welcome!')
+
+        print('Clients connected: %s' % len(TCPRequestHandler.connections))
+        while True:
+            try:
+                queue, message = get_message(self.request)
+                message['coremq_sender'] = conn_id
+                message['coremq_sent'] = time.time()
+
+                if 'coremq_subscribe' in message:
+                    self.subscribe(conn_id, message['coremq_subscribe'])
+                    self.respond(conn_id, 'OK: Subscribe successful')
+                elif 'coremq_unsubscribe' in message:
+                    self.unsubscribe(conn_id, message['coremq_unsubscribe'])
+                    self.respond(conn_id, 'OK: Unsubscribe successful')
+                elif 'coremq_options' in message:
+                    self.set_options(conn_id, message['coremq_options'])
+                    self.respond(conn_id, 'OK: Options set')
+                elif 'coremq_gethistory' in message:
+                    self.get_history(conn_id, message['coremq_gethistory'])
+                else:
+                    self.respond(conn_id, 'OK: Message sent')
+                    self.broadcast(queue, message)
+                    self.store_message(queue, message)
+
+            except socket.timeout:
+                pass
+            except (ConnectionClosed, socket.error):
+                break
+            except Exception as ex:
+                self.respond(conn_id, str(ex))
+                print(conn_id, ex)
+                traceback.print_exc()
+
+        try:
+            self.respond(conn_id, 'BYE')
+        except socket.error:
+            pass
+
+        if conn_id in TCPRequestHandler.connections:
+            del TCPRequestHandler.connections[conn_id]
+
+        print('Clients connected: %s' % len(TCPRequestHandler.connections))
+
+    def respond(self, conn_id, text):
+        send_message(self.request, conn_id, dict(response=text))
+
+    def subscribe(self, conn_id, queues):
+        if not queues:
+            return
+
+        if conn_id not in TCPRequestHandler.connections:
+            return
+
+        if not isinstance(queues, (list, tuple)):
+            queues = [queues]
+
+        subs = TCPRequestHandler.connections[conn_id]['subscriptions']
+        for q in queues:
+            if q not in subs:
+                subs.append(q)
+
+    def unsubscribe(self, conn_id, queues):
+        if not queues:
+            return
+
+        if conn_id not in TCPRequestHandler.connections:
+            return
+
+        if not isinstance(queues, (list, tuple)):
+            queues = [queues]
+
+        subs = TCPRequestHandler.connections[conn_id]['subscriptions']
+        for q in queues:
+            if q in subs:
+                subs.remove(q)
+
+    def set_options(self, conn_id, options):
+        opts = TCPRequestHandler.connections[conn_id]['options']
+        opts.update(options)
+
+        for key, val in options.items():
+            if val is None and key in opts:
+                del opts[key]
+
+    def broadcast(self, queue, message):
+        for conn_id, d in TCPRequestHandler.connections.items():
+            if conn_id == message['coremq_sender'] and queue != conn_id and d['options'].get('echo', False) is False:
+                continue
+
+            if queue in d['subscriptions']:
+                send_message(d['handler'].request, queue, message)
+
+    def store_message(self, queue, message):
+        if not queue in ThreadedTCPServer.HISTORY:
+            ThreadedTCPServer.HISTORY[queue] = collections.deque(maxlen=10)
+
+        ThreadedTCPServer.HISTORY[queue].append(message)
+
+    def get_history(self, conn_id, queues):
+        result = dict()
+        for q in queues:
+            if q in ThreadedTCPServer.HISTORY:
+                result[q] = list(ThreadedTCPServer.HISTORY[q])
+
+        send_message(self.request, conn_id, dict(response=result))
+
+
+def signal_handler(signal, frame):
+    print('Shutting down message queue')
+    ThreadedTCPServer.EXITING = True
+
+
+def message_queue_process():
+    print('Starting message queue')
+    mixIn = ThreadingMixIn(ADDRESS, PORT) #used to support asynchronous behaviour
+    server = ThreadedTCPServer(mixIn, TCPRequestHandler)
+    server.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    server.timeout = 1
+    while not ThreadedTCPServer.EXITING:
+        server.handle_request()
+
+    print('Message queue stopped')
+    sys.exit(0)
+
+
+def start():
+    signal.signal(signal.SIGINT, signal_handler) #custom handlers to be executed when a signal is received
+    signal.signal(signal.SIGTERM, signal_handler) #Termination signal
+    ThreadedTCPServer.PROCESS = Process(target=message_queue_process)
+    ThreadedTCPServer.PROCESS.start()
+
+
+if __name__ == '__main__':
+    start()
