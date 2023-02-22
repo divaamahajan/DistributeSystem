@@ -189,3 +189,6 @@ def comma_string_to_list(s):
         result.append(i.strip())
 
     return result
+
+# msg = construct_message('q1',{'a': 1})
+# print(msg)

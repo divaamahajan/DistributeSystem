@@ -196,8 +196,6 @@ def clientHandling(dirName, clientSock):
 
 signal.signal(signal.SIGINT, serverShutdown) #Keyboard Interrupt will shutdown Server
 portNo , dirName = getArguments()
-# portNo = getPortNo()
-# dirName = getDirName()
 print(f"The server is exposed to Port {portNo}")
 print(f"The server will fetch web pages from local directory {dirName}")
 print(f"\tTo connect with client on browser,\n\tClick on link: http://localhost:{portNo}")

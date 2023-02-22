@@ -3,7 +3,7 @@
 import pandas as pd
 import os
   
-folder1 = 'Broker'
+folder1 = 'CourseConnect'
 folder2 = 'courses'
 def get_courses():
     path = os.getcwd()

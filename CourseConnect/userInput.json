@@ -1,0 +1,44 @@
+[
+    {
+     "name": "uname1",
+     "courses": 201,
+     "term": "fall",
+     "year": 2022
+    },
+    {
+     "name": "uname1",
+     "courses": 202,
+     "term": "fall",
+     "year": 2022
+    },
+    {
+     "name": "uname1",
+     "courses": 203,
+     "term": "fall",
+     "year": 2022
+    },
+    {
+     "name": "uname1",
+     "courses": 204,
+     "term": "winter",
+     "year": 2023
+    },
+    {
+     "name": "uname1",
+     "courses": 210,
+     "term": "winter",
+     "year": 2023
+    },
+    {
+     "name": "uname1",
+     "courses": 225,
+     "term": "spring",
+     "year": 2023
+    },
+    {
+     "name": "uname1",
+     "courses": 233,
+     "term": "spring",
+     "year": 2023
+    }
+   ]
