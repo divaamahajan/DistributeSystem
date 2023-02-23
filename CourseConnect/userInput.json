@@ -1,44 +1,23 @@
 [
     {
-     "name": "uname1",
-     "courses": 201,
-     "term": "fall",
-     "year": 2022
+     "uname": "uname1",
+     "startQuarter" : "spring 2021",
+     "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
+     "planned": [205,206],
+     "subscribe": [205]
     },
     {
-     "name": "uname1",
-     "courses": 202,
-     "term": "fall",
-     "year": 2022
+        "uname": "uname2",
+        "startQuarter" : "spring 2021",
+        "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
+        "planned": [205,206],
+        "subscribe": [206]
     },
     {
-     "name": "uname1",
-     "courses": 203,
-     "term": "fall",
-     "year": 2022
-    },
-    {
-     "name": "uname1",
-     "courses": 204,
-     "term": "winter",
-     "year": 2023
-    },
-    {
-     "name": "uname1",
-     "courses": 210,
-     "term": "winter",
-     "year": 2023
-    },
-    {
-     "name": "uname1",
-     "courses": 225,
-     "term": "spring",
-     "year": 2023
-    },
-    {
-     "name": "uname1",
-     "courses": 233,
-     "term": "spring",
-     "year": 2023
+        "uname": "uname3",
+        "startQuarter" : "spring 2021",
+        "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
+        "planned": [205,206]
     }
+    
    ]
