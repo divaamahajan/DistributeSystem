@@ -131,6 +131,7 @@ def send_data(port,data):
         #Forward the contents of the queue to the Computational server
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((HOST, port))
+        sock.setblocking(1)		
         print(f"\n\nConnected to Computational server")
         sock.sendall(bytes(data,encoding="utf-8"))
         # sock.sendall(data.encode())

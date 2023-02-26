@@ -27,21 +27,25 @@ json_obj = """[
 
 # # JSON string:
 # # Multi-line string
-# x = """{
-# 	"Name": "Jennifer Smith",
-# 	"Contact Number": 7867567898,
-# 	"Email": "jen123@gmail.com",
-# 	"Hobbies":["Reading", "Sketching", "Horse Riding"]
-# 	}"""
+x = """{
+	"Name": "Jennifer Smith",
+	"Contact Number": 7867567898,
+	"Email": "jen123@gmail.com",
+	"Hobbies":["Reading", "Sketching", "Horse Riding"]
+	}"""
 
-# parse x:
-y = json.loads(json_obj)
+import pandas as pd
 
-# the result is a Python dictionary:
-for row in y:
-    print(type(row))
+df = pd.read_json(x)  
+print(df)
+# # parse x:
+# y = json.loads(json_obj)
+
+# # the result is a Python dictionary:
+# for row in y:
+#     print(type(row))
     
-input = {"A":"a", "B":"b", "C":"c", "D":""}
-output = {k:v for (k,v) in input.items() if k in["A","B"] and v is not None}
-print(output)
+# input = {"A":"a", "B":"b", "C":"c", "D":""}
+# output = {k:v for (k,v) in input.items() if k in["A","B"] and v is not None}
+# print(output)
 
