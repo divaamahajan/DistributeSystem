@@ -11,7 +11,7 @@ class CourseConnect:
 
     def __init__(self):
         self.senders_email = 'courseconnect.scu@gmail.com'
-        self.senders_pwd = 'rplozjtglblcnedh' # app password
+        self.senders_pwd = 'private' # app password
 
     def jsonToXlsx(self, data):
         # Convert json to dataframe
