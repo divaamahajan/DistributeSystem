@@ -12,14 +12,7 @@ async def receive_data(websocket, path):
         print("Handling client..")
         async for message in websocket:
             data = json.loads(message)
-            print(f"Received data: {data}")
-        # clientRequest = await websocket.recv()
-        # print("Check clientRequest data....")
-        # if not clientRequest:  
-        #     print(f"\nNo request recieved.")
-        #     raise Exception
-        # df = pd.read_json(clientRequest)  
-        # print(f"Below message received:\n {clientRequest}")
+            print(f"\n\nReceived data: {data}")
     except Exception as e:
         print(f"Exception :{e}")
         print(f"\nClosing client connection... ")
@@ -27,7 +20,7 @@ async def receive_data(websocket, path):
 
 async def server():
     async with websockets.serve(receive_data, HOST, portNo):
-        print(f"Server is listening for connection at {HOST}:{portNo}...\n")
+        print(f"\n\nServer is listening for connection at {HOST}:{portNo}...\n")
         await asyncio.Future()  # run forever
 
 asyncio.run(server())
