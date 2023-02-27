@@ -1,0 +1,21 @@
+[
+    {
+     "uname": "uname1",
+     "startQuarter" : "spring 2021",
+     "CommonCourses":{"spring 2021":[201,202], "fall 2021":[203,204] },
+     "planned": [205,206]
+    },
+    {
+        "uname": "uname2",
+        "startQuarter" : "spring 2021",
+        "CommonCourses":{"spring 2021":[201,202], "fall 2021":[203,204] },
+        "planned": [205,206]
+    },
+    {
+        "uname": "uname3",
+        "startQuarter" : "spring 2021",
+        "CommonCourses":{"spring 2021":[201,202], "fall 2021":[203,204] },
+        "planned": [205,206]
+    }
+    
+   ]

@@ -20,16 +20,6 @@ path = os.getcwd()
 filepath = os.path.join(path, folder1 , "userInput.json")         
 # create the lock
 lock = threading.Lock()
-
-def getArguments():
-    listenPort, dirName = int(), ''
-    parser = argparse.ArgumentParser()  # Initialize parser
-    parser.add_argument("-port", "--listenPort", help = "choose a listenPort") # Adding optional argument
-    args = parser.parse_args() # Read arguments from command line
-    if not args.listenPort: listenPort =  8081
-    else: listenPort = int(args.listenPort)
-    return (listenPort)
-
        
 def clientHandling(clientSock):
     sending_threads = []
