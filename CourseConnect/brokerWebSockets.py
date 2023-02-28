@@ -24,7 +24,7 @@ def is_json(json_str):
         return True
     except json.JSONDecodeError:
         return False
-async def update_forwarding_host(host):
+async def set_forwarding_host(host):
     with lock:
         forwarding_host = host
 async def sendDatafromQueue(pubQ, subQ):
@@ -64,7 +64,7 @@ async def clientHandling(websocket, path):
             elif LDR_KEY in request_map.keys():
                 #update forwarding host
                 print(f"\nHost IP updated:{request_map[LDR_KEY]} to forward the request to Computation Server's Port {FORWARD_PORT}....")
-                update_forwarding_host(request_map[LDR_KEY])
+                set_forwarding_host(request_map[LDR_KEY])
             elif RQST_KEY in request_map.keys():
                 print(f"\nExecuting Sender thread to forward the request to Computation Server's Port {FORWARD_PORT}....")
                 send = asyncio.create_task(forwardData(request_map))
