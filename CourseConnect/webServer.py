@@ -3,7 +3,6 @@ import websockets
 import json
 import pandas as pd
 import os
-from itertools import zip_longest
 
 
 HOST, PORT = "localhost", 8000
