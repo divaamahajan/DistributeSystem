@@ -97,6 +97,7 @@ async def writeJsonToQueue(qName, hashmap, qList: queue.Queue()):
 
 async def forwardData(received_hashmap):
     try:
+        pub_dict,sub_dict = dict(), dict()
         # create a list to keep track of all the threads
         tasks = []
         # list element is taken for referencing objects as return
