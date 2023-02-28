@@ -11,22 +11,36 @@ LISTENING_HOST = 'localhost'
 forwarding_host = 'localhost'
 PUBCOLS = ['uname', 'startQuarter', 'term', 'planned']
 SUBCOLS = ['uname', 'subscribe']
-
+RQST_KEY = 'requestID'
+ACK_KEY = 'ACK'
+LDR_KEY = 'LDR'
+SUB_KEY = 'subscribe'
 pubQueue, subQueue = queue.Queue(), queue.Queue()
 lock = threading.Lock()
 
+def is_json(json_str):
+    try:
+        json.loads(json_str)
+        return True
+    except json.JSONDecodeError:
+        return False
+async def update_forwarding_host(host):
+    with lock:
+        forwarding_host = host
 async def sendDatafromQueue(pubQ, subQ):
     async with websockets.connect(f"ws://{forwarding_host}:{FORWARD_PORT}") as websocket:
-        while not pubQ.empty():
+        while pubQ:
+            obj = ''
             with lock:
                 obj = pubQ.get()
                 await websocket.send(json.dumps(obj))
-                await asyncio.sleep(1)  # wait 1 second between each row
-        while pubQ.empty() and not subQ.empty():
+                # await asyncio.sleep(1)  # wait 1 second between each row
+        while subQ and not pubQ:
+            obj = ''
             with lock:
                 obj = subQ.get()
                 await websocket.send(json.dumps(obj))
-                await asyncio.sleep(1)  # wait 1 second between each row
+                # await asyncio.sleep(1)  # wait 1 second between each row
 
 async def clientHandling(websocket, path):
     print("Handeling the Client")
@@ -39,15 +53,27 @@ async def clientHandling(websocket, path):
             if not clientRequest:
                 print(f"\nNo request received.")
                 raise Exception
-            df = pd.read_json(clientRequest)
-            print(f"Below message received:\n {df}")
-
-            print(f"\nExecuting Sender thread to forward the request to Computation Server's Port {FORWARD_PORT}....")
-            send = asyncio.create_task(forwardData(clientRequest))
-            sending_tasks.append(send)
-            await send
-            print(f"\nSender task execution complete")
-
+            if not is_json(clientRequest):
+                print(f"\nInvalid request Type.")
+                raise Exception
+            request_map = json.loads(clientRequest)
+            print("Below message received:\n", pd.DataFrame([request_map]).set_index('requestID').transpose())
+            if ACK_KEY in request_map.keys():
+                #delete from buffer
+                pass
+            elif LDR_KEY in request_map.keys():
+                #update forwarding host
+                print(f"\nHost IP updated:{request_map[LDR_KEY]} to forward the request to Computation Server's Port {FORWARD_PORT}....")
+                update_forwarding_host(request_map[LDR_KEY])
+            elif RQST_KEY in request_map.keys():
+                print(f"\nExecuting Sender thread to forward the request to Computation Server's Port {FORWARD_PORT}....")
+                send = asyncio.create_task(forwardData(request_map))
+                sending_tasks.append(send)
+                await send
+                print(f"\nSender task execution complete")
+            else:
+                print(f"\nUnknown request received")
+                raise Exception
 
         except Exception as e:
             print(f"\nClosing client handling: {e}\nClosing client socket...\n")
@@ -61,39 +87,34 @@ async def clientHandling(websocket, path):
             await websocket.close()
 
 
-async def writeJsonToQueue(qName, json_obj, qList: queue.Queue()):
+async def writeJsonToQueue(qName, hashmap, qList: queue.Queue()):
     data_queue = qList[0]
+    json_obj = json.dumps(hashmap)
     # put each row of JSON object into the queue
     with lock:
         data_queue.put(json_obj)
         print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
 
-async def forwardData(receivedJson):
+async def forwardData(received_hashmap):
     try:
         # create a list to keep track of all the threads
         tasks = []
-        json_list = json.loads(receivedJson)
         # list element is taken for referencing objects as return
         pubList, subList = [queue.Queue()], [queue.Queue()]
+        pub_dict[RQST_KEY] = str(received_hashmap[RQST_KEY])+"_P"
+        pub_dict = {k: v for (k, v) in received_hashmap.items() if k in PUBCOLS and v is not None}
+        if SUB_KEY in received_hashmap and received_hashmap[SUB_KEY] is not [] :# add only if user has subscribed
+            sub_dict[RQST_KEY] = str(received_hashmap[RQST_KEY])+"_S"
+            sub_dict = {k: v for (k, v) in received_hashmap.items() if k in SUBCOLS and v is not None}
 
-        for row in json_list:
-            pub_dict = {k: v for (k, v) in row.items() if k in PUBCOLS and v is not None}
-            if row.get('subscribe') is not None:  # add only if user has subscribed      
-                sub_dict = {k: v for (k, v) in row.items() if k in SUBCOLS and v is not None}
-            # start publishing Queue thread
-            if pub_dict: # Only add to pubList if there is data to send
-                tasks.append(asyncio.create_task(writeJsonToQueue("Pub", json.dumps(pub_dict), pubList)))
+        # start publishing Queue thread
+        if pub_dict: # Only add to pubList if there is data to send
+            tasks.append(asyncio.create_task(writeJsonToQueue("Pub", json.dumps(pub_dict), pubList)))
 
-            if sub_dict: # Only add to subList if there is data to send
-                tasks.append(asyncio.create_task(writeJsonToQueue("Sub", json.dumps(pub_dict), pubList)))
+        if sub_dict: # Only add to subList if there is data to send
+            tasks.append(asyncio.create_task(writeJsonToQueue("Sub", json.dumps(pub_dict), pubList)))
 
         pubQueue, subQueue = pubList[0], subList[0]
-        if pubQueue:
-            print("\nBelow is the data of PubQ:\n\t")
-            print(*list(pubQueue.queue), sep='\t\n')
-        if subQueue:
-            print("\n\nBelow is the data of SubQ:\n\t")
-            print(*list(subQueue.queue), sep='\t\n')
         # sendThread = threading.Thread(target= sendDatafromQueue, args=(pubQueue, subQueue,))          
         tasks.append(asyncio.create_task(sendDatafromQueue(pubQueue, subQueue)))      
         await asyncio.gather(*tasks)

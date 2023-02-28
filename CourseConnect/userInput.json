@@ -1,23 +1,38 @@
-[
-    {
-     "uname": "uname1",
-     "startQuarter" : "spring 2021",
-     "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
-     "planned": [205,206],
-     "subscribe": [205]
-    },
-    {
+[   
+    {   
+        "requestID" : 100,
+        "name": "Fname Lname",
+        "uname": "uname",
+        "startQuarter" : "spring 2021",
+        "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
+        "planned": [205,206],
+        "subscribe": [205]
+    }, 
+    {   
+        "requestID" : 101,
+        "name": "Fname1 Lname1",
+        "uname": "uname1",
+        "startQuarter" : "spring 2021",
+        "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
+        "planned": [205,206],
+        "subscribe": []
+    }, 
+    {   
+        "requestID" : 102,
+        "name": "Fname2 Lname2",
         "uname": "uname2",
         "startQuarter" : "spring 2021",
         "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
         "planned": [205,206],
-        "subscribe": [206]
-    },
-    {
+        "subscribe": [205,206]
+    }, 
+    {   
+        "requestID" : 103,
+        "name": "Fname3 Lname3",
         "uname": "uname3",
         "startQuarter" : "spring 2021",
         "term":{"spring 2021":[201,202], "fall 2021":[203,204] },
-        "planned": [205,206]
+        "planned": [205,206],
+        "subscribe": [206]
     }
-    
-   ]
+]

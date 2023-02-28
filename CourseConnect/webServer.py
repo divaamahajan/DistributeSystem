@@ -3,14 +3,17 @@ import websockets
 import json
 import pandas as pd
 import os
+from itertools import zip_longest
+
 
 HOST, PORT = "localhost", 8000
 
 async def send_data(message):
     uri = f"ws://{HOST}:{PORT}"
-    async with websockets.connect(uri) as websocket:
-        await websocket.send(json.dumps(message))
-        print("Sent the below message:\n", pd.DataFrame(message))
+    for row in message:
+        async with websockets.connect(uri) as websocket:
+            await websocket.send(json.dumps(row))       
+            print("Sent the below message:\n", pd.DataFrame([row]).set_index('requestID').transpose())
         
 path = os.getcwd()
 json_filepath = os.path.join(path, "CourseConnect", "userInput.json")
