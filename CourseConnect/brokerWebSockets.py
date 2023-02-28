@@ -7,7 +7,8 @@ import pandas as pd
 
 LISTEN_PORT = 8000
 FORWARD_PORT = 8010
-HOST = 'localhost'
+LISTENING_HOST = 'localhost'
+forwarding_host = 'localhost'
 PUBCOLS = ['uname', 'startQuarter', 'term', 'planned']
 SUBCOLS = ['uname', 'subscribe']
 
@@ -15,7 +16,7 @@ pubQueue, subQueue = queue.Queue(), queue.Queue()
 lock = threading.Lock()
 
 async def sendDatafromQueue(pubQ, subQ):
-    async with websockets.connect(f"ws://{HOST}:{FORWARD_PORT}") as websocket:
+    async with websockets.connect(f"ws://{forwarding_host}:{FORWARD_PORT}") as websocket:
         while not pubQ.empty():
             with lock:
                 obj = pubQ.get()
@@ -26,11 +27,6 @@ async def sendDatafromQueue(pubQ, subQ):
                 obj = subQ.get()
                 await websocket.send(json.dumps(obj))
                 await asyncio.sleep(1)  # wait 1 second between each row
-
-async def send_data(port, data):
-    async with websockets.connect(f"ws://{HOST}:{port}") as websocket:
-        await websocket.send(data)
-
 
 async def clientHandling(websocket, path):
     print("Handeling the Client")
@@ -109,8 +105,8 @@ async def startServer():
     The async with block creates a server instance that listens on the specified host and port, 
     and calls the clientHandling coroutine to handle incoming connections.'''
     print("Starting server...")
-    async with websockets.serve(clientHandling, HOST, LISTEN_PORT):
-        print(f"Server started on {HOST}:{LISTEN_PORT}")
+    async with websockets.serve(clientHandling, LISTENING_HOST, LISTEN_PORT):
+        print(f"Server started on {LISTENING_HOST}:{LISTEN_PORT}")
         await asyncio.Future()# keep the coroutine alive forever
 
 if __name__ == '__main__':
