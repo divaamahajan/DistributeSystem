@@ -30,6 +30,7 @@ def is_json(json_str):
 async def set_forwarding_host(host):
     with lock:
         forwarding_host = host
+        
 async def clientHandling(websocket, path):
     print("Handeling the Client")
     sending_tasks = []
@@ -118,13 +119,15 @@ async def sendDatafromQueue():
             with lock:
                 obj = pubQueue.get() 
                 await websocket.send(obj)
+                buffer.add_to_buffer(id=(json.loads(obj))[RQST_KEY],json_obj=obj)                
                 # await websocket.send(json.dumps(obj))
                 # await asyncio.sleep(1)  # wait 1 second between each row
         while subQueue and not pubQueue:
             obj = ''
             with lock:
                 obj = subQueue.get()
-                await websocket.send(json.dumps(obj))
+                await websocket.send(obj)
+                buffer.add_to_buffer(id=(json.loads(obj))[RQST_KEY],json_obj=obj)       
                 # await asyncio.sleep(1)  # wait 1 second between each row
 
 async def startServer():
