@@ -87,12 +87,14 @@ async def clientHandling(websocket, path):
             await websocket.close()
 
 
-async def writeJsonToQueue(qName, hashmap, qList: queue.Queue()):
-    data_queue = qList[0]
+async def writeJsonToQueue(qName, hashmap):
     json_obj = json.dumps(hashmap)
     # put each row of JSON object into the queue
     with lock:
-        data_queue.put(json_obj)
+        if qName == 'Pub':
+            pubQueue.put(json_obj)
+        elif qName =='Sub':
+            subQueue.put(json_obj)
         print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
 
 async def forwardData(received_hashmap):
@@ -101,7 +103,6 @@ async def forwardData(received_hashmap):
         # create a list to keep track of all the threads
         tasks = []
         # list element is taken for referencing objects as return
-        pubList, subList = [queue.Queue()], [queue.Queue()]
         pub_dict[RQST_KEY] = str(received_hashmap[RQST_KEY])+"_P"
         pub_dict = {k: v for (k, v) in received_hashmap.items() if k in PUBCOLS and v is not None}
         if SUB_KEY in received_hashmap and received_hashmap[SUB_KEY] is not [] :# add only if user has subscribed
@@ -109,13 +110,12 @@ async def forwardData(received_hashmap):
             sub_dict = {k: v for (k, v) in received_hashmap.items() if k in SUBCOLS and v is not None}
 
         # start publishing Queue thread
-        if pub_dict: # Only add to pubList if there is data to send
-            tasks.append(asyncio.create_task(writeJsonToQueue("Pub", json.dumps(pub_dict), pubList)))
+        if pub_dict: # Only add to pub Queue if there is data to send
+            tasks.append(asyncio.create_task(writeJsonToQueue("Pub", json.dumps(pub_dict))))
 
-        if sub_dict: # Only add to subList if there is data to send
-            tasks.append(asyncio.create_task(writeJsonToQueue("Sub", json.dumps(pub_dict), pubList)))
+        if sub_dict: # Only add to sub Queue if there is data to send
+            tasks.append(asyncio.create_task(writeJsonToQueue("Sub", json.dumps(pub_dict))))
 
-        pubQueue, subQueue = pubList[0], subList[0]
         # sendThread = threading.Thread(target= sendDatafromQueue, args=(pubQueue, subQueue,))          
         tasks.append(asyncio.create_task(sendDatafromQueue(pubQueue, subQueue)))      
         await asyncio.gather(*tasks)
