@@ -30,7 +30,7 @@ def is_json(json_str):
 async def set_forwarding_host(host):
     with lock:
         forwarding_host = host
-        
+
 async def clientHandling(websocket, path):
     print("Handeling the Client")
     sending_tasks = []
@@ -42,12 +42,13 @@ async def clientHandling(websocket, path):
             if not clientRequest:
                 print(f"\nNo request received.")
                 raise Exception
-            if not is_json(clientRequest):
+            elif not is_json(clientRequest):
                 print(f"\nInvalid request Type.")
                 raise Exception
-            request_map = json.loads(clientRequest)
-            print(f"Below message received:\n{clientRequest}\n")
-            # print("Below message received:\n", pd.DataFrame([request_map]).set_index('requestID').transpose())
+            else:
+                request_map = json.loads(clientRequest)
+                print(f"Below message received:\n{clientRequest}\n")
+            
             if ACK_KEY in request_map.keys():
                 #delete from buffer
                 buffer.remove_from_buffer(request_map[ACK_KEY])
