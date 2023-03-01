@@ -31,11 +31,26 @@ async def set_forwarding_host(host):
     with lock:
         forwarding_host = host
 
+async def pause_every_15_mins(event):
+    while True:
+        await asyncio.sleep(900)  # wait for 15 minutes
+        event.set()  # set the event
+
 async def clientHandling(websocket, path):
     print("Handeling the Client")
     sending_tasks = []
+    event = asyncio.Event()  # create an event
+    asyncio.create_task(pause_every_15_mins(event))  # start the task to set the event every 15 minutes
+
     while True:
         try:
+            # wait for the event to be set
+            await event.wait()
+            event.clear()  # reset the event
+
+            # call add_buffer_to_queue function
+            await add_buffer_to_queue()
+
             # Receive request (packet) from client and decode
             clientRequest = await websocket.recv()
             # If no request received from client close connection and break
@@ -77,6 +92,15 @@ async def clientHandling(websocket, path):
             print(f"\nClosing client socket...")
             await websocket.close()
 
+async def add_buffer_to_queue():   
+    pq, sq = buffer.get_all_from_buffer()
+    # add elements of queue1 to queue2
+    while not pq.empty():
+        with lock:
+            await pubQueue.put(pq.get())
+    while not sq.empty():
+        with lock:
+            await subQueue.put(pq.get())
 
 async def forwardData(received_hashmap):
     try:
@@ -131,16 +155,7 @@ async def sendDatafromQueue():
                 buffer.add_to_buffer(id=(json.loads(obj))[RQST_KEY],json_obj=obj)       
                 # await asyncio.sleep(1)  # wait 1 second between each row
 
-async def add_buffer_to_queue():   
-    pq, sq = buffer.get_all_from_buffer()
-    # add elements of queue1 to queue2
-    while not pq.empty():
-        with lock:
-            pubQueue.put(pq.get())
-    while not sq.empty():
-        with lock:
-            subQueue.put(pq.get())
-            
+
 async def startServer():
     '''Here, we use asyncio and websockets modules to create a WebSocket server. 
     The async with block creates a server instance that listens on the specified host and port, 
