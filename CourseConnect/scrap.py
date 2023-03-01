@@ -50,7 +50,7 @@ json_object = json.dumps(dictionary, indent = 4)
 print(json_object)
 print(type(json_obj))
 
-y = json.loads(json_object)
+y = (json.loads(json_object))["id"]
 
 # the result is a Python dictionary:
-print(y["id"])
+print(y)

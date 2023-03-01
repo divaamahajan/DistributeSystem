@@ -4,7 +4,7 @@ import queue
 import threading
 import websockets
 import pandas as pd
-from failure_handeling import Buffer
+from buffer import Buffer
 
 LISTEN_PORT = 8000
 FORWARD_PORT = 8010
@@ -131,6 +131,16 @@ async def sendDatafromQueue():
                 buffer.add_to_buffer(id=(json.loads(obj))[RQST_KEY],json_obj=obj)       
                 # await asyncio.sleep(1)  # wait 1 second between each row
 
+async def add_buffer_to_queue():   
+    pq, sq = buffer.get_all_from_buffer()
+    # add elements of queue1 to queue2
+    while not pq.empty():
+        with lock:
+            pubQueue.put(pq.get())
+    while not sq.empty():
+        with lock:
+            subQueue.put(pq.get())
+            
 async def startServer():
     '''Here, we use asyncio and websockets modules to create a WebSocket server. 
     The async with block creates a server instance that listens on the specified host and port, 
