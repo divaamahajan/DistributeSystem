@@ -4,6 +4,7 @@ import queue
 import threading
 import websockets
 import pandas as pd
+from failure_handeling import Buffer
 
 LISTEN_PORT = 8000
 FORWARD_PORT = 8010
@@ -17,6 +18,7 @@ LDR_KEY = 'LDR'
 SUB_KEY = 'subscribe'
 pubQueue, subQueue = queue.Queue(), queue.Queue()
 lock = threading.Lock()
+buffer = Buffer()
 
 def is_json(json_str):
     try:
@@ -24,24 +26,10 @@ def is_json(json_str):
         return True
     except json.JSONDecodeError:
         return False
+    
 async def set_forwarding_host(host):
     with lock:
         forwarding_host = host
-async def sendDatafromQueue(pubQ, subQ):
-    async with websockets.connect(f"ws://{forwarding_host}:{FORWARD_PORT}") as websocket:
-        while pubQ:
-            obj = ''
-            with lock:
-                obj = pubQ.get()
-                await websocket.send(json.dumps(obj))
-                # await asyncio.sleep(1)  # wait 1 second between each row
-        while subQ and not pubQ:
-            obj = ''
-            with lock:
-                obj = subQ.get()
-                await websocket.send(json.dumps(obj))
-                # await asyncio.sleep(1)  # wait 1 second between each row
-
 async def clientHandling(websocket, path):
     print("Handeling the Client")
     sending_tasks = []
@@ -57,10 +45,11 @@ async def clientHandling(websocket, path):
                 print(f"\nInvalid request Type.")
                 raise Exception
             request_map = json.loads(clientRequest)
-            print("Below message received:\n", pd.DataFrame([request_map]).set_index('requestID').transpose())
+            print(f"Below message received:\n{clientRequest}\n")
+            # print("Below message received:\n", pd.DataFrame([request_map]).set_index('requestID').transpose())
             if ACK_KEY in request_map.keys():
                 #delete from buffer
-                pass
+                buffer.remove_from_buffer(request_map[ACK_KEY])
             elif LDR_KEY in request_map.keys():
                 #update forwarding host
                 print(f"\nHost IP updated:{request_map[LDR_KEY]} to forward the request to Computation Server's Port {FORWARD_PORT}....")
@@ -87,16 +76,6 @@ async def clientHandling(websocket, path):
             await websocket.close()
 
 
-async def writeJsonToQueue(qName, hashmap):
-    json_obj = json.dumps(hashmap)
-    # put each row of JSON object into the queue
-    with lock:
-        if qName == 'Pub':
-            pubQueue.put(json_obj)
-        elif qName =='Sub':
-            subQueue.put(json_obj)
-        print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
-
 async def forwardData(received_hashmap):
     try:
         pub_dict,sub_dict = dict(), dict()
@@ -111,15 +90,42 @@ async def forwardData(received_hashmap):
 
         # start publishing Queue thread
         if pub_dict: # Only add to pub Queue if there is data to send
-            tasks.append(asyncio.create_task(writeJsonToQueue("Pub", json.dumps(pub_dict))))
+            tasks.append(asyncio.create_task(writeJsonToQueue("Pub", pub_dict)))
 
         if sub_dict: # Only add to sub Queue if there is data to send
-            tasks.append(asyncio.create_task(writeJsonToQueue("Sub", json.dumps(pub_dict))))
+            tasks.append(asyncio.create_task(writeJsonToQueue("Sub", sub_dict)))
       
-        tasks.append(asyncio.create_task(sendDatafromQueue(pubQueue, subQueue)))      
+        tasks.append(asyncio.create_task(sendDatafromQueue()))      
         await asyncio.gather(*tasks)
     except Exception as e:
         print(f"\nError in forwarding data: {e}")
+
+
+async def writeJsonToQueue(qName, hashmap):
+    json_obj = json.dumps(hashmap)
+    # put each row of JSON object into the queue
+    with lock:
+        if qName == 'Pub':
+            pubQueue.put(json_obj)
+        elif qName =='Sub':
+            subQueue.put(json_obj)
+        print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
+
+async def sendDatafromQueue():
+    async with websockets.connect(f"ws://{forwarding_host}:{FORWARD_PORT}") as websocket:
+        while pubQueue:
+            obj = ''
+            with lock:
+                obj = pubQueue.get() 
+                await websocket.send(obj)
+                # await websocket.send(json.dumps(obj))
+                # await asyncio.sleep(1)  # wait 1 second between each row
+        while subQueue and not pubQueue:
+            obj = ''
+            with lock:
+                obj = subQueue.get()
+                await websocket.send(json.dumps(obj))
+                # await asyncio.sleep(1)  # wait 1 second between each row
 
 async def startServer():
     '''Here, we use asyncio and websockets modules to create a WebSocket server. 

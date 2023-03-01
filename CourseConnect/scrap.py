@@ -36,16 +36,21 @@ x = """{
 
 import pandas as pd
 
-df = pd.read_json(x)  
-print(df)
-# # parse x:
-# y = json.loads(json_obj)
+import json
+	
+# Data to be written
+dictionary ={
+"id": "04",
+"name": "sunil",
+"department": "HR"
+}
+	
+# Serializing json
+json_object = json.dumps(dictionary, indent = 4)
+print(json_object)
+print(type(json_obj))
 
-# # the result is a Python dictionary:
-# for row in y:
-#     print(type(row))
-    
-# input = {"A":"a", "B":"b", "C":"c", "D":""}
-# output = {k:v for (k,v) in input.items() if k in["A","B"] and v is not None}
-# print(output)
+y = json.loads(json_object)
 
+# the result is a Python dictionary:
+print(y["id"])
