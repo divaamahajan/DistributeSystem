@@ -115,8 +115,7 @@ async def forwardData(received_hashmap):
 
         if sub_dict: # Only add to sub Queue if there is data to send
             tasks.append(asyncio.create_task(writeJsonToQueue("Sub", json.dumps(pub_dict))))
-
-        # sendThread = threading.Thread(target= sendDatafromQueue, args=(pubQueue, subQueue,))          
+      
         tasks.append(asyncio.create_task(sendDatafromQueue(pubQueue, subQueue)))      
         await asyncio.gather(*tasks)
     except Exception as e:
