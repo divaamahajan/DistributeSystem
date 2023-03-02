@@ -62,7 +62,7 @@ class SortedCircularLinkedList:
         curr = self.head
 
         while True:
-            print(curr.data, end=' ')
+            print(curr.data, end='->')
             curr = curr.next
 
             if curr == self.head:
