@@ -1,177 +1,170 @@
-# from time import sleep
-import socket
-import threading
-import sys
-import argparse
-import os
-import pandas as pd
-import queue
+import asyncio
 import json
-
-LISTEN_PORT = 8000
-FORWARD_PORT = 8010
-folder1 = 'CourseConnect'
-HOST = 'localhost'
-PACKET_SIZE = 4096
-PUBCOLS = ['uname', 'startQuarter', 'term', 'planned']
-SUBCOLS = ['uname','subscribe']
-
-path = os.getcwd()
-filepath = os.path.join(path, folder1 , "userInput.json")         
-# create the lock
-lock = threading.Lock()
-       
-def clientHandling(clientSock):
-    sending_threads = []
-    while True:        
-        try:        
-            # Recive request (packet) from client and decode
-            clientRequest = clientSock.recv(PACKET_SIZE).decode()  
-            # If no request recieved from client close connection and break
-            if not clientRequest:  
-                print(f"\nNo request recieved.")
-                raise Exception
-            df = pd.read_json(clientRequest)  
-            print(f"Below message received:\n {df}")
-
-            print(f"\n Executing Sender thread to forward the request to Computation Server's Port {FORWARD_PORT}....")
-            send =threading.Thread(target= forwardData, args=(clientRequest,))
-            send.start()
-            sending_threads.append(send)
-            print(f"\nSender thread execution complete")              
-            # # send the response back to the client
-            # clientSock.sendall(obj)
-            
-        except Exception as e:
-            print(f"\nError in client handeling: {e}\nClosing client socket...\n")
-            clientSock.close()
-            break
-        finally:
-            #wait for sending threads to finish
-            for t in sending_threads:
-                t.join()
-            print(f"\nClosing client socket...")
-            clientSock.close()
-
-def writeJsonToQueue(qName,json_obj, qList: queue.Queue()):
-    
-    data_queue = qList[0]
-    # put each row of JSON object into the queue
-    with lock:
-        data_queue.put(json_obj)
-        print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
-
-def forwardData(receivedJson):
-    try:  
-        # create a list to keep track of all the threads
-        threads = []
-        json_list = json.loads(receivedJson)
-        # list element is taken for refrencing objects as return      
-        pubList, subList = [queue.Queue()], [queue.Queue()]
-        
-        for row in json_list:
-            pub_dict = {k:v for (k,v) in row.items() if k in PUBCOLS and v is not None}
-            if row.get('subscribe') is not None: #add only if user has subscribed
-                sub_dict = {k:v for (k,v) in row.items() if k in SUBCOLS and v is not None}
-            #start publishing Queue thread  
-            pubThread =threading.Thread(target= writeJsonToQueue, args=("Pub", json.dumps(pub_dict), pubList,))
-            pubThread.start()
-            threads.append(pubThread) 
-
-            #start Subscribing Queue thread
-            subThread =threading.Thread(target= writeJsonToQueue, args=("Sub", json.dumps(sub_dict), subList,))
-            subThread.start()  
-            threads.append(subThread)          
-
-        pubQueue, subQueue = pubList[0], subList[0]  
-        print("\nBelow is the data of PubQ:\n\t") 
-        print(*list(pubQueue.queue),sep='\t\n')
-        print("\n\nBelow is the data of SubQ:\n\t") 
-        print(*list(subQueue.queue),sep='\t\n')
-
-        sendThread = threading.Thread(target= sendDatafromQueue, args=(pubQueue, subQueue,))
-        # sendThread.daemon = True #daemon is set to ensure that the thread does not prevent the main program from exiting
-        # start the reader thread
-        sendThread.start()
-        threads.append(sendThread)
-        # wait for all threads to finish
-        for t in threads: t.join()
-        # # receive the response from the other port
-        # response = forward_socket.recv(PACKET_SIZE)
-    except Exception as e:
-        print(f"\nError in forwarding data: {e}")
-
-def sendDatafromQueue( pubQ, subQ):
-    # forwarding socket is being closed inside the sendDatafromQueue function
-    # wait for the pubQ to be empty
-    while not pubQ.empty():
-        with lock:
-            obj = pubQ.get()
-            print(f"\n\nforwarding Data:\n\t{obj}")
-        send_data(FORWARD_PORT, obj)
-
-    while pubQ.empty() and (not subQ.empty()):
-        with lock:
-            obj = subQ.get()
-        send_data(FORWARD_PORT, obj)
+import websockets
+from buffer import Buffer
 
 
-def send_data(port,data):
-    try:
-        #Forward the contents of the queue to the Computational server
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((HOST, port))
-        sock.setblocking(1)		
-        print(f"\n\nConnected to Computational server")
-        sock.sendall(bytes(data,encoding="utf-8"))
-        # sock.sendall(data.encode())
-        print(f"\n\nBelow data is sent to CE: \n\t{data}")
-    except (ConnectionResetError, BrokenPipeError, OSError) as e:
-        print(f"Error sending data to CE {socket.getpeername()}: {e}")
-    finally:
-        sock.close()
+class Server:
+    def __init__(self):
+        self.listening_port = 8000
+        self.forwarding_port = 8010
+        self.listening_host = 'localhost'
+        self.forwarding_host = 'localhost'
+        self.pub_cols = ['name', 'uname', 'startQuarter', 'term', 'planned']
+        self.sub_cols = ['uname', 'subscribe']
+        self.rqst_key = 'requestID'
+        self.ack_key = 'ACK'
+        self.ldr_key = 'LDR'
+        self.sub_key = 'subscribe'
+        self.pub_queue = asyncio.Queue()
+        self.sub_queue = asyncio.Queue()
+        self.buffer = Buffer()
+        self.lock = asyncio.Lock()
 
-def main():
-    # listenPort = getArguments()
-    listenPort = LISTEN_PORT
-    print(f"The server is exposed to Port {listenPort}")
-
-    #create a TCP socket | AF_INET : ipv4 | SOCK_STREAM : TCP protocol. 
-    listenServSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # to rerun Python socket server on the same specific port after closing it once. 
-    listenServSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
-    print(f"\nSocket successfully created")
-    # bind host IP to the port
-    try:
-        listenServSock.bind((HOST, listenPort))
-        print(f"Socket bound successfully to host {HOST}")
-    except Exception as e:  # Exit if socket could not be bound to port
-        print(f"Error: socket bound failure to port: {listenPort}")
-        listenServSock.close()
-        sys.exit(1)
-
-    # accept incoming connections and forward the request to another port
-    while True: 
+    def is_json(self,json_str):
         try:
-            listenServSock.listen() # Listen for connections   
-            print(f"\nServer is listening for connection on port {listenPort}...")
-            clientSock, clientAddr = listenServSock.accept() # Establish the connection from client 
-            print(f"\nconnection established from client {clientAddr}" )            
-            print(f"\nExecuting listerner thread....")
-            # # Create new thread for client request, and continue accepting connections
-            listn =threading.Thread(target= clientHandling, args=(clientSock,))
-            listn.start()
-            listn.join()
-            print(f"\nListner thread execution complete")
+            json.loads(json_str)
+            return True
+        except json.JSONDecodeError:
+            return False
+        
+    async def set_forwarding_host(self, host):
+        async with self.lock:
+            self.forwarding_host = host
+
+    async def client_handling(self, websocket: websockets.WebSocketServerProtocol, path: str):
+        print("Handeling the Client")
+        sending_tasks = []
+
+        while True:
+            try:
+                # Receive request (packet) from client and decode
+                clientRequest = await websocket.recv()
+                # If no request received from client close connection and break
+                if not clientRequest:
+                    print(f"\nNo request received.")
+                    raise Exception
+                elif not self.is_json(clientRequest):
+                    print(f"\nInvalid request Type.")
+                    raise Exception
+                else:
+                    request_map = json.loads(clientRequest)
+                    print(f"Below message received:\n{clientRequest}\n")
+
+                if self.ack_key in request_map.keys():
+                    #delete from buffer
+                    self.buffer.remove_from_buffer(request_map[self.ack_key])
+                elif self.ldr_key in request_map.keys():
+                    #update forwarding host
+                    print(f"\nHost IP updated:{request_map[self.ldr_key]} to forward the request to Computation Server's Port {self.forwarding_port}....")
+                    await self.set_forwarding_host(request_map[self.ldr_key])
+                elif self.rqst_key in request_map.keys():
+                    print(f"\nExecuting Sender thread to forward the request to Computation Server's Port {self.forwarding_port}....")
+                    send = asyncio.create_task(self.forwardData(request_map))
+                    sending_tasks.append(send)
+                    await send
+                    print(f"\nSender task execution complete")
+                else:
+                    print(f"\nUnknown request received")
+                    raise Exception
+                
+            except websockets.exceptions.ConnectionClosedError as e:
+                print(f"\nclosing handshake didn’t complete properly. {e}\n")
+
+            except websockets.exceptions.ConnectionClosedOK as e:
+                # print(f"\n connection terminated properly. {e}\n")
+                pass
+
+            except Exception as e:
+                print(f"\nException in client handling: {e}\nClosing client socket...\n")
+                await websocket.close()
+                break
+            finally:
+                # wait for sending tasks to finish
+                await asyncio.gather(*sending_tasks)
+                sending_tasks.clear()
+                # print(f"\nClosing client socket...")
+                await websocket.close()
+
+
+    async def add_buffer_to_queues(self):   
+        pq, sq = self.buffer.get_all_from_buffer()
+        # add elements of queue1 to queue2
+        while not pq.empty():
+            with self.lock:
+                await self.pub_queue.put(pq.get())
+        while not sq.empty():
+            with self.lock:
+                await self.sub_queue.put(sq.get())
+
+    async def forwardData(self,received_hashmap):
+        try:
+            pub_dict,sub_dict = dict(), dict()
+            # create a list to keep track of all the threads
+            tasks = []
+            # list element is taken for referencing objects as return
+            pub_dict[self.rqst_key] = str(received_hashmap[self.rqst_key])+"_P"
+            pub_dict = {k: v for (k, v) in received_hashmap.items() if k in self.pub_cols and v is not None}
+            if self.sub_key in received_hashmap and received_hashmap[self.sub_key] is not [] :# add only if user has subscribed
+                sub_dict[self.rqst_key] = str(received_hashmap[self.rqst_key])+"_S"
+                sub_dict = {k: v for (k, v) in received_hashmap.items() if k in self.sub_cols and v is not None}
+
+            # start publishing Queue thread
+            if pub_dict: # Only add to pub Queue if there is data to send
+                tasks.append(asyncio.create_task(self.writeJsonToQueue("Pub", pub_dict)))
+
+            if sub_dict: # Only add to sub Queue if there is data to send
+                tasks.append(asyncio.create_task(self.writeJsonToQueue("Sub", sub_dict)))
+        
+            tasks.append(asyncio.create_task(self.sendDatafromQueue()))      
+            await asyncio.gather(*tasks)
         except Exception as e:
-            print(f"\nException in forever loop {e}\n. Closing client socket...")
-            clientSock.close()
-            break
-        finally:
-            print(f"\nClosing client socket...")
-            clientSock.close()
+            print(f"\nError in forwarding data: {e}")
 
 
+    async def writeJsonToQueue(self, qName, hashmap):
+        json_obj = json.dumps(hashmap)
+        # put each row of JSON object into the queue
+        async with self.lock:
+            if qName == 'Pub':
+                await self.pub_queue.put(json_obj)
+            elif qName =='Sub':
+                await self.sub_queue.put(json_obj)
+            print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
+
+
+
+    async def sendDatafromQueue(self):
+        try:
+            async with websockets.connect(f"ws://{self.forwarding_host}:{self.forwarding_port}") as websocket:
+                while not self.pub_queue.empty():
+                    obj = ''
+                    async with self.lock:
+                        if not self.pub_queue.empty():
+                            obj = await self.pub_queue.get()
+                    #sending data from the queue to the computation server
+                    await websocket.send(obj)
+                    self.buffer.add_to_buffer(id=(json.loads(obj))[self.rqst_key],json_obj=obj)         
+                while not self.sub_queue.empty() and self.pub_queue.empty():
+                    obj = ''
+                    async with self.lock:
+                        if not self.sub_queue.empty():
+                            obj = self.sub_queue.get()
+                    #sending data from the queue to the computation server
+                    await websocket.send(obj)
+                    self.buffer.add_to_buffer(id=(json.loads(obj))[self.rqst_key],json_obj=obj)          
+        except Exception as e:
+            print(f"sending error: {e}")                
+    
+    async def startServer(self):
+        '''Here, we use asyncio and websockets modules to create a WebSocket server. 
+        The async with block creates a server instance that listens on the specified host and port, 
+        and calls the clientHandling coroutine to handle incoming connections.'''
+        print("Starting server...")
+        async with websockets.serve(self.client_handling, self.listening_host, self.listening_port):
+            print(f"Server started on {self.listening_host}:{self.listening_port}")
+            await asyncio.Future()# keep the coroutine alive forever
 
 if __name__ == '__main__':
-    main()
+    sv = Server()
+    asyncio.run(sv.startServer())
