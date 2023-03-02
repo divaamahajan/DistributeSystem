@@ -43,16 +43,19 @@ class Leader:
                 node = node.next
                 if node == self.ring_nodes.head:
                     break
-        except:
-            pass
+        except Exception as e:
+            print("\n\nException while updating successors of the ring : {e}\n")
 
     async def failure_handling(self, failed_ip):
-        pred_ip = self.ring_nodes.get_predecessor(failed_ip)
-        succ_ip = self.ring_nodes.get_successor(failed_ip)
-        self.ring_nodes.remove_node(failed_ip)
-        update_successor_msg =  {self.successor_key: succ_ip}
-        async with websockets.connect(f"ws://{pred_ip}") as websocket:
-            await websocket.send(json.dumps(update_successor_msg))
+        try:
+            pred_ip = self.ring_nodes.get_predecessor(failed_ip)
+            succ_ip = self.ring_nodes.get_successor(failed_ip)
+            self.ring_nodes.remove_node(failed_ip)
+            update_successor_msg =  {self.successor_key: succ_ip}
+            async with websockets.connect(f"ws://{pred_ip}") as websocket:
+                await websocket.send(json.dumps(update_successor_msg))
+        except Exception as e:
+            print("\n\nException while failure handling : {e}\n")
 
 class RingProtocolLeaderElection:
     def __init__(self, my_ip, next_ip):
