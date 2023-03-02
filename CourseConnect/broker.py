@@ -16,8 +16,9 @@ class Server:
         self.ack_key = 'ACK'
         self.ldr_key = 'LDR'
         self.sub_key = 'subscribe'
-        self.pub_queue = asyncio.Queue()
+        self.pub_queue = asyncio.PriorityQueue()
         self.sub_queue = asyncio.Queue()
+        self.sending_pub = False  # flag to indicate whether pub_Queue is currently being sent from        
         self.buffer = Buffer()
         self.lock = asyncio.Lock()
 
@@ -91,23 +92,23 @@ class Server:
         pq, sq = self.buffer.get_all_from_buffer()
         # add elements of queue1 to queue2
         while not pq.empty():
-            with self.lock:
-                await self.pub_queue.put(pq.get())
+            if not self.sending_pub:  # only add to pub_Queue if it's not being sent from
+                with self.lock:
+                    await self.pub_queue.put(pq.get())
         while not sq.empty():
             with self.lock:
                 await self.sub_queue.put(sq.get())
 
     async def forwardData(self,received_hashmap):
         try:
-            pub_dict,sub_dict = dict(), dict()
+            pub_dict = {self.rqst_key: str(received_hashmap[self.rqst_key])+"_P"}
             # create a list to keep track of all the threads
             tasks = []
             # list element is taken for referencing objects as return
-            pub_dict[self.rqst_key] = str(received_hashmap[self.rqst_key])+"_P"
-            pub_dict = {k: v for (k, v) in received_hashmap.items() if k in self.pub_cols and v is not None}
+            pub_dict.update({k: v for (k, v) in received_hashmap.items() if k in self.pub_cols and v is not None})
             if self.sub_key in received_hashmap and received_hashmap[self.sub_key] is not [] :# add only if user has subscribed
-                sub_dict[self.rqst_key] = str(received_hashmap[self.rqst_key])+"_S"
-                sub_dict = {k: v for (k, v) in received_hashmap.items() if k in self.sub_cols and v is not None}
+                sub_dict = {self.rqst_key: str(received_hashmap[self.rqst_key])+"_S"}
+                sub_dict.update({k: v for (k, v) in received_hashmap.items() if k in self.sub_cols and v is not None})
 
             # start publishing Queue thread
             if pub_dict: # Only add to pub Queue if there is data to send
@@ -127,34 +128,52 @@ class Server:
         # put each row of JSON object into the queue
         async with self.lock:
             if qName == 'Pub':
-                await self.pub_queue.put(json_obj)
+                if not self.sending_pub:  # only add to pub_Queue if it's not being sent from
+                    await self.pub_queue.put(json_obj)
             elif qName =='Sub':
                 await self.sub_queue.put(json_obj)
             print(f"\nBelow object added to {qName} queue\n\t {json_obj} ")
 
 
-
     async def sendDatafromQueue(self):
-        try:
-            async with websockets.connect(f"ws://{self.forwarding_host}:{self.forwarding_port}") as websocket:
-                while not self.pub_queue.empty():
-                    obj = ''
-                    async with self.lock:
+        async with websockets.connect(f"ws://{self.forwarding_host}:{self.forwarding_port}") as websocket:
+            while True:
+                async with self.lock:
+                    if not self.sending_pub:
                         if not self.pub_queue.empty():
-                            obj = await self.pub_queue.get()
-                    #sending data from the queue to the computation server
-                    await websocket.send(obj)
-                    self.buffer.add_to_buffer(id=(json.loads(obj))[self.rqst_key],json_obj=obj)         
-                while not self.sub_queue.empty() and self.pub_queue.empty():
-                    obj = ''
-                    async with self.lock:
-                        if not self.sub_queue.empty():
-                            obj = self.sub_queue.get()
-                    #sending data from the queue to the computation server
-                    await websocket.send(obj)
-                    self.buffer.add_to_buffer(id=(json.loads(obj))[self.rqst_key],json_obj=obj)          
-        except Exception as e:
-            print(f"sending error: {e}")                
+                            self.sending_pub = True  # set the flag
+                            items_to_send = []
+                            while not self.pub_queue.empty():
+                                item = await self.pub_queue.get()
+                                items_to_send.append(item)
+                            self.sending_pub = False  # unset the flag
+                            for item in items_to_send:
+                                #sending data from the queue to the computation server
+                                await websocket.send(item)
+                                await self.buffer.add_to_buffer(id=(json.loads(item))[self.rqst_key],json_obj=item)
+                            continue  # go back to the beginning of the loop to check pub_Queue again
+                        elif not self.sub_queue.empty():
+                            item = await self.sub_queue.get()
+                            #sending data from the queue to the computation server
+                            await websocket.send(item)
+                            await self.buffer.add_to_buffer(id=(json.loads(item))[self.rqst_key],json_obj=item)
+                            continue  # go back to the beginning of the loop to check pub_Queue again
+                await asyncio.sleep(0.1)  # sleep briefly to avoid spinning too much
+
+
+    # async def sendDatafromQueue(self):
+    #     async with websockets.connect(f"ws://{self.forwarding_host}:{self.forwarding_port}") as websocket:
+    #         while not self.pub_queue.empty() or not self.sub_queue.empty():
+    #             obj = ''
+    #             async with self.lock:
+    #                 if not self.pub_queue.empty():
+    #                     obj = await self.pub_queue.get()
+    #                 elif not self.sub_queue.empty():
+    #                     obj = await self.sub_queue.get()
+    #             #sending data from the queue to the computation server
+    #             await websocket.send(obj)
+    #             self.buffer.add_to_buffer(id=(json.loads(obj))[self.rqst_key],json_obj=obj)
+  
     
     async def startServer(self):
         '''Here, we use asyncio and websockets modules to create a WebSocket server. 
