@@ -41,6 +41,7 @@ class Leader:
         return self.leader_ip 
 
     def update_ring_nodes(self,ring_nodes:list()):
+        self.ring_nodes = None
         self.ring_nodes = scll()
         for node in ring_nodes: 
             self.ring_nodes.add_node(data=node)
@@ -77,7 +78,7 @@ class Leader:
         update_broker_msg = {LDR_UPD_KEY:self.get_leader()}
         address = f"{BROKER_IP}:{str(BROKER_PORT)}"
         self.send_msg(destination_ip = address, msg=update_broker_msg)
-        
+
 class RingProtocolLeaderElection:
     def __init__(self, my_ip, next_ip):
         self.my_ip = my_ip
@@ -144,6 +145,19 @@ class RingProtocolLeaderElection:
         self.next_ip = next_ip
         self.next_successsor_ip = next_successor_ip
     
+    #local failure handeling of a node
+    def failure_handling(self, failed_ip):
+        leader_ip = self.leader.get_leader() 
+        if leader_ip == self.my_ip:                 #If I lam leader, 
+            self.leader.failure_handling(failed_ip)     # perform failure handeling
+        elif failed_ip == leader_ip:                # if leader has failed
+            self.leader_failure_notification(failed_ip)          # send notification to other nodes
+        elif leader_ip is None:                     #if no leader found, 
+            self.initiate_election()                   # initiate election
+        else:                                       #else inform leader
+            node_fail_msg =  {NODEFAIL_KEY: failed_ip}            
+            self.send_msg(destination_ip={leader_ip}, msg=node_fail_msg)
+
     # actions to perform if leader has failed
     def leader_failure_notification(self, failed_ip):
         # Algorithm stops ans starts election when all nodes have cleared their leader
@@ -161,16 +175,3 @@ class RingProtocolLeaderElection:
         self.leader.update_leader(None)             #clear leader, so as to end the notificaton cycle 
         leader_fail_msg =  {LEADERFAIL_KEY: failed_ip}            
         self.send_msg(destination_ip={self.next_ip}, msg=leader_fail_msg) #inform next node about leader failure
-
-    #local failure handeling of a node
-    def failure_handling(self, failed_ip):
-        leader_ip = self.leader.get_leader() 
-        if leader_ip == self.my_ip:                 #If I lam leader, 
-            self.leader.failure_handling(failed_ip)     # perform failure handeling
-        elif failed_ip == leader_ip:                # if leader has failed
-            self.leader_failure_notification(failed_ip)          # send notification to other nodes
-        elif leader_ip is None:                     #if no leader found, 
-            self.initiate_election()                   # initiate election
-        else:                                       #else inform leader
-            node_fail_msg =  {NODEFAIL_KEY: failed_ip}            
-            self.send_msg(destination_ip={leader_ip}, msg=node_fail_msg)
