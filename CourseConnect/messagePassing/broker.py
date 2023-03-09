@@ -53,14 +53,14 @@ class Server:
                     request_map = json.loads(clientRequest)
                     print(f"Below message received:\n{clientRequest}\n")
 
-                if self.ack_key in request_map.keys():
+                if self.ack_key in request_map.keys(): #ACK from Compute server
                     #delete from buffer
                     self.buffer.remove_from_buffer(request_map[self.ack_key])
-                elif self.ldr_key in request_map.keys():
+                elif self.ldr_key in request_map.keys(): #LDR update from Computer Server
                     #update forwarding host
                     print(f"\nHost IP updated:{request_map[self.ldr_key]} to forward the request to Computation Server's Port {self.forwarding_port}....")
                     await self.set_forwarding_host(request_map[self.ldr_key])
-                elif self.rqst_key in request_map.keys():
+                elif self.rqst_key in request_map.keys(): #msg forwarding from web Server to Compute Server
                     print(f"\nExecuting Sender thread to forward the request to Computation Server's Port {self.forwarding_port}....")
                     send = asyncio.create_task(self.forwardData(request_map))
                     sending_tasks.append(send)
