@@ -165,12 +165,12 @@ class Server:
                             id=(json.loads(item))[self.rqst_key]
                             id_pub = id[:-1]+"P"
                             if self.buffer.get_from_buffer(id=id_pub) is not None:
-                                #sending data from the queue to the computation server only if corresponding pub Id not in buffer
+                                #sending data from the queue to the computation server 
+                                # only if corresponding pub Id not in buffer
                                 await websocket.send(item)
-                            await self.buffer.add_to_buffer(id=(json.loads(item))[self.rqst_key],json_obj=item)
+                            await self.buffer.add_to_buffer(id=id,json_obj=item)
                             continue  # go back to the beginning of the loop to check pub_Queue again
                 await asyncio.sleep(0.1)  # sleep briefly to avoid spinning too much
-
 
     # async def sendDatafromQueue(self):
     #     async with websockets.connect(f"ws://{self.forwarding_host}:{self.forwarding_port}") as websocket:
