@@ -2,7 +2,7 @@ import asyncio
 import json
 import websockets
 from buffer import Buffer
-
+import time
 
 class Server:
     def __init__(self):
@@ -36,6 +36,7 @@ class Server:
     async def client_handling(self, websocket: websockets.WebSocketServerProtocol, path: str):
         print("Handeling the Client")
         sending_tasks = []
+        last_buffer_addition_time = time.time()
 
         while True:
             try:
@@ -69,11 +70,17 @@ class Server:
                     print(f"\nUnknown request received")
                     raise Exception
                 
+                # Check if 15 minutes have elapsed since last buffer addition
+                current_time = time.time()
+                elapsed_time = current_time - last_buffer_addition_time
+                if elapsed_time >= 900:
+                    await self.add_buffer_to_queues()
+                    last_buffer_addition_time = current_time
+
             except websockets.exceptions.ConnectionClosedError as e:
                 print(f"\nclosing handshake didn’t complete properly. {e}\n")
 
-            except websockets.exceptions.ConnectionClosedOK as e:
-                # print(f"\n connection terminated properly. {e}\n")
+            except websockets.exceptions.ConnectionClosedOK :
                 pass
 
             except Exception as e:
@@ -86,7 +93,8 @@ class Server:
                 sending_tasks.clear()
                 # print(f"\nClosing client socket...")
                 await websocket.close()
-
+            # Delay for 1 second before looping again
+            await asyncio.sleep(1)
 
     async def add_buffer_to_queues(self):   
         pq, sq = self.buffer.get_all_from_buffer()
@@ -137,7 +145,7 @@ class Server:
 
     async def sendDatafromQueue(self):
         async with websockets.connect(f"ws://{self.forwarding_host}:{self.forwarding_port}") as websocket:
-            while True:
+            while not self.pub_queue.empty() or not self.sub_queue.empty():
                 async with self.lock:
                     if not self.sending_pub:
                         if not self.pub_queue.empty():
@@ -154,8 +162,11 @@ class Server:
                             continue  # go back to the beginning of the loop to check pub_Queue again
                         elif not self.sub_queue.empty():
                             item = await self.sub_queue.get()
-                            #sending data from the queue to the computation server
-                            await websocket.send(item)
+                            id=(json.loads(item))[self.rqst_key]
+                            id_pub = id[:-1]+"P"
+                            if self.buffer.get_from_buffer(id=id_pub) is not None:
+                                #sending data from the queue to the computation server only if corresponding pub Id not in buffer
+                                await websocket.send(item)
                             await self.buffer.add_to_buffer(id=(json.loads(item))[self.rqst_key],json_obj=item)
                             continue  # go back to the beginning of the loop to check pub_Queue again
                 await asyncio.sleep(0.1)  # sleep briefly to avoid spinning too much

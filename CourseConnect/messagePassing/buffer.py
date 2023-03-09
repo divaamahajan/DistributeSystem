@@ -10,6 +10,13 @@ class Buffer:
         async with self.lock:
             self.id_json[id] = json_obj
 
+
+    async def get_from_buffer(self, id):
+        async with self.lock:
+            if id in self.id_json.keys():
+                return self.id_json[id]
+            return None
+
     async def get_all_from_buffer(self):
         """if multiple coroutines are accessing the same instance of the Buffer class concurrently, 
         it is possible that one coroutine reads the id_json attribute while another coroutine is modifying it 
