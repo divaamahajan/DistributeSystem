@@ -24,8 +24,8 @@ class Buffer:
         pubQueue, subQueue = Queue(), Queue()
         async with self.lock:   
             for id, obj in self.id_json.items():
-                if id[-1] == 'P': pubQueue.put(self.id_json[id])
-                elif id[-1] == 'S': subQueue.put(self.id_json[id])
+                if id[-1] == 'P': pubQueue.put(obj)
+                elif id[-1] == 'S': subQueue.put(obj)
             return (pubQueue,subQueue)
 
     async def remove_from_buffer(self, id):
