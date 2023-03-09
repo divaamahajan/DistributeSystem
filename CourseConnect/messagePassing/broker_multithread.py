@@ -9,14 +9,11 @@ import json
 
 LISTEN_PORT = 8000
 FORWARD_PORT = 8010
-folder1 = 'CourseConnect'
 HOST = 'localhost'
 PACKET_SIZE = 4096
 PUBCOLS = ['uname', 'startQuarter', 'term', 'planned']
 SUBCOLS = ['uname','subscribe']
 
-path = os.getcwd()
-filepath = os.path.join(path, folder1 , "userInput.json")         
 # create the lock
 lock = threading.Lock()
        
