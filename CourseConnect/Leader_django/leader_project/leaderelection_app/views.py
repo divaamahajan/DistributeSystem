@@ -9,6 +9,8 @@ ALL_NODES_KEY = 'network'
 SUCCESSOR_KEY = 'successor'
 NODEFAIL_KEY = 'nodefail'
 LEADERFAIL_KEY = 'leaderfailed'
+TASK_KEY = 'task'
+RQST_KEY  = 'requestID'
 PORT = 9000
 my_ip = "host"
 next_ip = "next_host"
@@ -26,4 +28,9 @@ def listen(request):
             node.failure_handling(msg[NODEFAIL_KEY])        
         elif LEADERFAIL_KEY in msg.keys():
             node.leader_failure_notification(msg[LEADERFAIL_KEY])
+        elif TASK_KEY in msg.keys():
+            node.perform_task(msg[TASK_KEY])
+        elif RQST_KEY in msg.keys():
+            node.assign_tasks(msg)
+        
         

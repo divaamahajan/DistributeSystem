@@ -19,6 +19,7 @@ NODEFAIL_KEY = 'nodefail'
 LEADERFAIL_KEY = 'leaderfailed'
 LDR_UPD_KEY = 'LDR'
 BROKER_IP = 'host'
+TASK_KEY = 'task'
 BROKER_PORT = 8000
 PORT = 9000
 
@@ -26,6 +27,7 @@ class Leader:
     def __init__(self, leader_ip):
         self.leader_ip = leader_ip
         self.ring_nodes = None
+        self.next_task_node_ip = None
         PORT = 9000
 
     def send_msg(self, destination_ip, msg):
@@ -38,8 +40,25 @@ class Leader:
         self.leader_ip = leader_ip
 
     def get_leader(self):
-        return self.leader_ip 
+        return self.leader_ip     
+    
+    def get_next_task_node_ip(self):
+        if self.next_task_node_ip is None:
+            self.next_task_node_ip = self.leader_ip
+        else:
+            self.next_task_node_ip = self.ring_nodes.get_successor(self.next_task_node_ip)
+        return self.next_task_node_ip
 
+    def assign_task(self, msg_dict):
+        task_msg = dict()
+        task_msg[TASK_KEY] = msg_dict #add new key called task and add task msg to its value
+        next_node_ip = self.get_next_task_node_ip()
+        if next_node_ip == self.leader_ip:
+            return msg_dict #return task to leader
+        else:
+            self.send_msg(destination_ip=next_node_ip, msg= task_msg)
+            return None
+    
     def update_ring_nodes(self,ring_nodes:list()):
         self.ring_nodes = None
         self.ring_nodes = scll()
@@ -89,6 +108,25 @@ class RingProtocolLeaderElection:
     def send_msg(self, destination_ip, msg):
         req = httplib2.Http()
         resp, content = req.request(destination_ip, method="POST",body=json.dumps(msg))
+
+    def perform_task(self, task_dict):        
+        # task_dict["term"]:{"spring 2021":[COEN201,COEN202], "fall 2021":[COEN203,COEN204] },
+        term_dict = dict()
+        courseid_list = list()
+        term_dict = task_dict["term"] #{"spring 2021":[COEN201,COEN202], "fall 2021":[COEN203,COEN204] }
+        for term, course_list in term_dict:
+            for course in course_list: #[COEN201,COEN202]
+                cid = str()
+                cid = term + course #spring 2021 COEN201
+                cid.replace(" ", "") #spring2021COEN201
+                courseid_list.append(cid)
+        task_dict["term"] = courseid_list # [spring2021COEN201, spring2021COEN202, fall2021COEN203, fall2021COEN204]
+        #call api with task_dict
+
+    def assign_tasks(self, msg_dict): #leader will receive this message
+        msg = self.leader.assign_task(msg_dict)
+        if msg is not None: #leader's turn to perform the task
+            self.perform_task(msg)
     
     #initiate election
     def initiate_election(self):
