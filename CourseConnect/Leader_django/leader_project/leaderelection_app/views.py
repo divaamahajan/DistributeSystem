@@ -1,4 +1,3 @@
-from django.shortcuts import render
 import json
 from . ringprotocol import RingProtocolLeaderElection as ring
 # Create your views here.
